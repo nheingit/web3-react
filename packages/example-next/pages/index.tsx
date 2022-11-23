@@ -3,6 +3,7 @@ import GnosisSafeCard from '../components/connectorCards/GnosisSafeCard'
 import MetaMaskCard from '../components/connectorCards/MetaMaskCard'
 import NetworkCard from '../components/connectorCards/NetworkCard'
 import WalletConnectCard from '../components/connectorCards/WalletConnectCard'
+import PhantomCard from '../components/connectorCards/PhantomCard'
 import ProviderExample from '../components/ProviderExample'
 
 export default function Home() {
@@ -15,6 +16,7 @@ export default function Home() {
         <CoinbaseWalletCard />
         <NetworkCard />
         <GnosisSafeCard />
+        <PhantomCard />
       </div>
     </>
   )
