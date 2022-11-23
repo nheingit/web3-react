@@ -4,8 +4,10 @@ import { MetaMask } from '@web3-react/metamask'
 import { Network } from '@web3-react/network'
 import { WalletConnect } from '@web3-react/walletconnect'
 import type { Connector } from '@web3-react/types'
+import { Phantom } from '@web3-react/phantom'
 
 export function getName(connector: Connector) {
+  if (connector instanceof Phantom) return 'Phantom'
   if (connector instanceof MetaMask) return 'MetaMask'
   if (connector instanceof WalletConnect) return 'WalletConnect'
   if (connector instanceof CoinbaseWallet) return 'Coinbase Wallet'

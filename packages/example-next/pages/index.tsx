@@ -11,11 +11,11 @@ export default function Home() {
     <>
       <ProviderExample />
       <div style={{ display: 'flex', flexFlow: 'wrap', fontFamily: 'sans-serif' }}>
-        <MetaMaskCard />
+        {/* <MetaMaskCard />
         <WalletConnectCard />
         <CoinbaseWalletCard />
         <NetworkCard />
-        <GnosisSafeCard />
+        <GnosisSafeCard /> */}
         <PhantomCard />
       </div>
     </>
