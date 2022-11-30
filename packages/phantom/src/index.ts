@@ -8,7 +8,11 @@ import type {
 } from '@web3-react/types'
 import { Connector } from '@web3-react/types'
 
-type PhantomProvider = Provider & { isPhantom?: boolean; isConnected?: () => boolean; providers?: PhantomProvider[] }
+type PhantomProvider = Provider & {
+  isPhantom?: boolean
+  isConnected?: () => boolean
+  providers?: PhantomProvider[]
+}
 
 export class NoPhantomError extends Error {
   public constructor() {
@@ -82,24 +86,30 @@ export class Phantom extends Connector {
   public async connectEagerly(): Promise<void> {
     const cancelActivation = this.actions.startActivation()
 
-    await this.isomorphicInitialize()
-    if (!this.provider) return cancelActivation()
+    try {
+      await this.isomorphicInitialize()
+      if (!this.provider) throw new Error('No provider found')
+      if (!this.provider?.isConnected) throw new Error('No existing connection')
 
-    return Promise.all([
-      this.provider.request({ method: 'eth_chainId' }) as Promise<string>,
-      this.provider.request({ method: 'eth_accounts' }) as Promise<string[]>,
-    ])
-      .then(([chainId, accounts]) => {
-        if (accounts.length) {
-          this.actions.update({ chainId: parseChainId(chainId), accounts })
-        } else {
-          throw new Error('No accounts returned')
-        }
-      })
-      .catch((error) => {
-        console.debug('Could not connect eagerly', error)
-        cancelActivation()
-      })
+      return Promise.all([
+        this.provider.request({ method: 'eth_chainId' }) as Promise<string>,
+        this.provider.request({ method: 'eth_accounts' }) as Promise<string[]>,
+      ])
+        .then(([chainId, accounts]) => {
+          if (accounts.length) {
+            this.actions.update({ chainId: parseChainId(chainId), accounts })
+          } else {
+            throw new Error('No accounts returned')
+          }
+        })
+        .catch((error) => {
+          console.debug('Could not connect eagerly', error)
+          this.actions.resetState()
+        })
+    } catch (error) {
+      cancelActivation()
+      throw error
+    }
   }
 
   /**
@@ -107,7 +117,7 @@ export class Phantom extends Connector {
    *
    * @param desiredChainIdOrChainParameters - If defined, indicates the desired chain to connect to. If the user is
    * already connected to this chain, no additional steps will be taken. Otherwise, the user will switch
-   * to the chain. 
+   * to the chain.
    */
   public async activate(desiredChainIdOrChainParameters?: number | AddEthereumChainParameter): Promise<void> {
     let cancelActivation: () => void

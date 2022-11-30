@@ -11,14 +11,12 @@ import { hooks as networkHooks, network } from '../connectors/network'
 import { hooks as walletConnectHooks, walletConnect } from '../connectors/walletConnect'
 import { getName } from '../utils'
 
-const connectors: [Phantom, Web3ReactHooks][] = [[phantom, phantomHooks]]
-// const connectors: [MetaMask | WalletConnect | CoinbaseWallet | Phantom | Network, Web3ReactHooks][] = [
-//   [metaMask, metaMaskHooks],
-//   [walletConnect, walletConnectHooks],
-//   [coinbaseWallet, coinbaseWalletHooks],
-//   [phantom, phantomHooks],
-//   [network, networkHooks],
-// ]
+const connectors: [Phantom | CoinbaseWallet | WalletConnect | MetaMask, Web3ReactHooks][] = [
+  [walletConnect, walletConnectHooks],
+  [coinbaseWallet, coinbaseWalletHooks],
+  [phantom, phantomHooks],
+  [metaMask, metaMaskHooks]
+]
 
 function Child() {
   const { connector } = useWeb3React()
