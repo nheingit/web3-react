@@ -24,6 +24,7 @@
     "start": "tsc --watch"
   },
   "dependencies": {
+    "@metamask/detect-provider": "^2.0.0",
     "@web3-react/types": "^8.0.20-beta.0"
   },
   "devDependencies": {

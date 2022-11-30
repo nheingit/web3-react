@@ -1,15 +1,29 @@
-import type { Actions, Provider, ProviderConnectInfo, ProviderRpcError } from '@web3-react/types'
+import type detectEthereumProvider from '@metamask/detect-provider'
+import type {
+  Actions,
+  AddEthereumChainParameter,
+  Provider,
+  ProviderConnectInfo,
+  ProviderRpcError,
+} from '@web3-react/types'
 import { Connector } from '@web3-react/types'
-import type detectEthereumProvider from './utils'
-
-function parseChainId(chainId: string | number) {
-  return typeof chainId === 'string' ? Number.parseInt(chainId, 16) : chainId
-}
 
 type PhantomProvider = Provider & { isPhantom?: boolean; isConnected?: () => boolean; providers?: PhantomProvider[] }
 
+export class NoPhantomError extends Error {
+  public constructor() {
+    super('Phantom not installed')
+    this.name = NoPhantomError.name
+    Object.setPrototypeOf(this, NoPhantomError.prototype)
+  }
+}
+
+function parseChainId(chainId: string) {
+  return Number.parseInt(chainId, 16)
+}
+
 /**
- * @param provider - An EIP-1193 ({@link https://github.com/ethereum/EIPs/blob/master/EIPS/eip-1193.md}) provider.
+ * @param options - Options to pass to `@Phantom/detect-provider`
  * @param onError - Handler to report errors thrown from eventListeners.
  */
 export interface PhantomConstructorArgs {
@@ -18,17 +32,9 @@ export interface PhantomConstructorArgs {
   onError?: (error: Error) => void
 }
 
-export class NoPhantomError extends Error {
-  public constructor() {
-    super("Phantom is not installed")
-    this.name = NoPhantomError.name
-    Object.setPrototypeOf(this, NoPhantomError.prototype)
-  }
-}
-
 export class Phantom extends Connector {
   /** {@inheritdoc Connector.provider} */
-  provider?: PhantomProvider
+  public provider?: PhantomProvider
 
   private readonly options?: Parameters<typeof detectEthereumProvider>[0]
   private eagerConnection?: Promise<void>
@@ -41,12 +47,13 @@ export class Phantom extends Connector {
   private async isomorphicInitialize(): Promise<void> {
     if (this.eagerConnection) return
 
-    return (this.eagerConnection = import('./utils').then(async (m) => {
+    return (this.eagerConnection = import('@metamask/detect-provider').then(async (m) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
       const provider = await m.default(this.options)
-      if (provider) {
+      if ((provider as PhantomProvider).isPhantom) {
         this.provider = provider as PhantomProvider
 
-        // handle the case when e.g. phantom and coinbase wallet are both installed
+        // handle the case when e.g. Phantom and coinbase wallet are both installed
         if (this.provider.providers?.length) {
           this.provider = this.provider.providers.find((p) => p.isPhantom) ?? this.provider.providers[0]
         }
@@ -88,33 +95,73 @@ export class Phantom extends Connector {
       this.provider.request({ method: 'eth_accounts' }) as Promise<string[]>,
     ])
       .then(([chainId, accounts]) => {
-        this.actions.update({ chainId: parseChainId(chainId), accounts })
+        if (accounts.length) {
+          this.actions.update({ chainId: parseChainId(chainId), accounts })
+        } else {
+          throw new Error('No accounts returned')
+        }
       })
       .catch((error) => {
+        console.debug('Could not connect eagerly', error)
         cancelActivation()
-        throw error
       })
   }
 
-  /** {@inheritdoc Connector.activate} */
-  public async activate(): Promise<void> {
+  /**
+   * Initiates a connection.
+   *
+   * @param desiredChainIdOrChainParameters - If defined, indicates the desired chain to connect to. If the user is
+   * already connected to this chain, no additional steps will be taken. Otherwise, the user will switch
+   * to the chain. 
+   */
+  public async activate(desiredChainIdOrChainParameters?: number | AddEthereumChainParameter): Promise<void> {
     let cancelActivation: () => void
     if (!this.provider?.isConnected?.()) cancelActivation = this.actions.startActivation()
-    
-      return this.isomorphicInitialize()
-        .then(async () => {
-          if (!this.provider) throw new NoPhantomError()
 
-          return Promise.all([
-            this.provider.request({ method: 'eth_chainId' }) as Promise<string>,
-            this.provider.request({ method: 'eth_requestAccounts' }) as Promise<string[]>,
-          ]).then(([chainId, accounts]) => {
-            return this.actions.update({ chainId: parseChainId(chainId), accounts})
+    return this.isomorphicInitialize()
+      .then(async () => {
+        if (!this.provider) throw new NoPhantomError()
+
+        return Promise.all([
+          this.provider.request({ method: 'eth_chainId' }) as Promise<string>,
+          this.provider.request({ method: 'eth_requestAccounts' }) as Promise<string[]>,
+        ]).then(([chainId, accounts]) => {
+          const receivedChainId = parseChainId(chainId)
+          const desiredChainId =
+            typeof desiredChainIdOrChainParameters === 'number'
+              ? desiredChainIdOrChainParameters
+              : desiredChainIdOrChainParameters?.chainId
+
+          // if there's no desired chain, or it's equal to the received, update
+          if (!desiredChainId || receivedChainId === desiredChainId)
+            return this.actions.update({ chainId: receivedChainId, accounts })
+
+          const desiredChainIdHex = `0x${desiredChainId.toString(16)}`
+
+          // if we're here, we can try to switch networks
+          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+          return this.provider!.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: desiredChainIdHex }],
           })
+            .catch((error: ProviderRpcError) => {
+              if (error.code === 4902 && typeof desiredChainIdOrChainParameters !== 'number') {
+                // if we're here, we can try to add a new network
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                return this.provider!.request({
+                  method: 'wallet_addEthereumChain',
+                  params: [{ ...desiredChainIdOrChainParameters, chainId: desiredChainIdHex }],
+                })
+              }
+
+              throw error
+            })
+            .then(() => this.activate(desiredChainId))
         })
-        .catch((error) => {
-          cancelActivation?.()
-          throw error
-        })
+      })
+      .catch((error) => {
+        cancelActivation?.()
+        throw error
+      })
   }
 }
