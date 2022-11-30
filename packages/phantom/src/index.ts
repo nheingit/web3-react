@@ -53,11 +53,6 @@ export class Phantom extends Connector {
       if ((provider as PhantomProvider).isPhantom) {
         this.provider = provider as PhantomProvider
 
-        // handle the case when e.g. Phantom and coinbase wallet are both installed
-        if (this.provider.providers?.length) {
-          this.provider = this.provider.providers.find((p) => p.isPhantom) ?? this.provider.providers[0]
-        }
-
         this.provider.on('connect', ({ chainId }: ProviderConnectInfo): void => {
           this.actions.update({ chainId: parseChainId(chainId) })
         })
